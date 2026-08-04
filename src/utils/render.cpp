@@ -127,10 +127,10 @@ void RenderUtil::RegisterCoronaDirectional(const DummyConfig *pConfig, float ang
             col.a *= mul;
         }
 
-        if (pConfig->lightType == eMaterialType::HeadLightLeft || pConfig->lightType == eMaterialType::HeadLightRight)
-        {
-            CPointLights::AddLight(PLTYPE_SPOTLIGHT, mat.pos, mat.up, 20.0f, col.r / 255.0, col.g / 255.0, col.b / 255.0, 0, 0, 0);
-        }
+        // if (pConfig->lightType == eMaterialType::HeadLightLeft || pConfig->lightType == eMaterialType::HeadLightRight)
+        // {
+        //     CPointLights::AddLight(PLTYPE_SPOTLIGHT, mat.pos, mat.up, 20.0f, col.r / 255.0, col.g / 255.0, col.b / 255.0, 0, 0, 0);
+        // }
     }
     RegisterCorona(pConfig->pVeh, reinterpret_cast<int32_t>(pConfig), pConfig->position, col, sz);
 }

@@ -95,10 +95,8 @@ void Lights::Init()
 		// Headlights
 		CRGBA matCol = *reinterpret_cast<CRGBA *>(RpMaterialGetColor(pMat));
 		matCol.a = 255;
-		if (matCol == VEHCOL_HEADLIGHT_LEFT) {
-			return eMaterialType::HeadLightLeft;
-		} else if (matCol == VEHCOL_HEADLIGHT_RIGHT) {
-			return eMaterialType::HeadLightRight;
+		if (matCol == VEHCOL_HEADLIGHT_LEFT || matCol == VEHCOL_HEADLIGHT_RIGHT) {
+   			return eMaterialType::UnknownMaterial; 
 		}
 		// Taillights
 		else if (matCol == VEHCOL_TAILLIGHT_LEFT) {
@@ -737,6 +735,7 @@ void Lights::RenderLights(CVehicle *pControlVeh, CVehicle *pTowedVeh, eMaterialT
 
 void Lights::RenderHeadlights(CVehicle *pControlVeh, bool isLeftOn, bool isRightOn, bool realTime)
 {
+	return;
 	CVehicle *pTowedVeh = pControlVeh;
 	VehLightDatav1 &data = m_VehData.Get(pControlVeh);
 
