@@ -310,7 +310,11 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 					}
 				}
 			}
-			material->surfaceProps.ambient = gLightSurfProps.ambient;
+			if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
+			{
+				material->surfaceProps.ambient = gLightSurfProps.ambient;
+			}
+		}
 		}
 		else
 		{
