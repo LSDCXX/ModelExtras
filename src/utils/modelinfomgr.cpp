@@ -310,12 +310,7 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 					}
 				}
 			}
-
-			// 【保护前灯】：只对非前灯修改 ambient 属性，前灯交由 Proper Shaders 自适应渲染
-			if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
-			{
 				material->surfaceProps.ambient = gLightSurfProps.ambient;
-			}
 		}
 		else
 		{
