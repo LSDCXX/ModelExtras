@@ -241,8 +241,6 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 			LicensePlate::ProcessTextures(pCurVeh, material);
 		}
 	}
-
-	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
 	if (iLightIndex != eMaterialType::UnknownMaterial)
 	{
 		auto &data = m_VehData.Get(pCurVeh);
