@@ -209,137 +209,152 @@ eMaterialType ModelInfoMgr::FetchMaterialType(CVehicle *pVeh, RpMaterial *pMat)
 
 RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *data)
 {
-	if (!material)
-	{
-		return material;
-	}
-	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
-	// 【修改 2】：遇到前大灯材质，直接 return！
-	if (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight)
-	{
-		return material;
-	}
-	tRestoreEntry **ppEntries = reinterpret_cast<tRestoreEntry **>(data);
-	if (material->texture)
-	{
-		bool isRemapTex = RwTextureGetName(RpMaterialGetTexture(material))[0] == '#';
-		if (isRemapTex)
-		{
-			if (CVehicleModelInfo::ms_pRemapTexture)
-			{
-				(*ppEntries)->m_pAddress = &material->texture;
-				(*ppEntries)->m_pValue = material->texture;
-				(*ppEntries)++;
-				material->texture = CVehicleModelInfo::ms_pRemapTexture;
-			}
-		}
-		else
-		{
-			DirtFx::ProcessTextures(pCurVeh, material);
-			LicensePlate::ProcessTextures(pCurVeh, material);
-		}
-	}
+    if (!material)
+    {
+        return material;
+    }
 
-	if (iLightIndex != eMaterialType::UnknownMaterial)
-	{
-		auto &data = m_VehData.Get(pCurVeh);
+    tRestoreEntry **ppEntries = reinterpret_cast<tRestoreEntry **>(data);
+    if (material->texture)
+    {
+        bool isRemapTex = RwTextureGetName(RpMaterialGetTexture(material))[0] == '#';
+        if (isRemapTex)
+        {
+            if (CVehicleModelInfo::ms_pRemapTexture)
+            {
+                (*ppEntries)->m_pAddress = &material->texture;
+                (*ppEntries)->m_pValue = material->texture;
+                (*ppEntries)++;
+                material->texture = CVehicleModelInfo::ms_pRemapTexture;
+            }
+        }
+        else
+        {
+            DirtFx::ProcessTextures(pCurVeh, material);
+            LicensePlate::ProcessTextures(pCurVeh, material);
+        }
+    }
 
-		bool lightOn = false;
-		data.m_MatAvail[iLightIndex] = true;
+    eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
+    if (iLightIndex != eMaterialType::UnknownMaterial)
+    {
+        auto &data = m_VehData.Get(pCurVeh);
 
-		// Hide show night, day mats
-		bool nightTime = Util::IsNightTime();
-		if (iLightIndex == eMaterialType::DayLight)
-		{
-			RpMaterialGetColor(material)->alpha = nightTime ? 0 : 255;
-		}
+        bool lightOn = false;
+        data.m_MatAvail[iLightIndex] = true;
 
-		if (iLightIndex == eMaterialType::NightLight)
-		{
-			RpMaterialGetColor(material)->alpha = nightTime ? 255 : 0;
-		}
+        // Hide show night, day mats
+        bool nightTime = Util::IsNightTime();
+        if (iLightIndex == eMaterialType::DayLight)
+        {
+            RpMaterialGetColor(material)->alpha = nightTime ? 0 : 255;
+        }
 
-		if (iLightIndex == eMaterialType::SirenLight)
-		{
-			int idx = GetSirenIndex(pCurVeh, material);
-			if (idx >= 0 && idx < MAX_LIGHTS)
-			{
-				lightOn = data.m_SirenStatus[idx];
-			}
-		}
-		else if (iLightIndex == eMaterialType::StrobeLight)
-		{
-			int idx = GetStrobeIndex(pCurVeh, material);
-			if (idx >= 0 && idx < MAX_LIGHTS)
-			{
-				lightOn = data.m_StrobeStatus[idx];
-			}
-		}
-		else if (iLightIndex != eMaterialType::UnknownMaterial)
-		{
-			lightOn = data.m_MatStatus[iLightIndex];
-		}
+        if (iLightIndex == eMaterialType::NightLight)
+        {
+            RpMaterialGetColor(material)->alpha = nightTime ? 255 : 0;
+        }
 
-		MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
-		(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
-		(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
-		(*ppEntries)++;
+        if (iLightIndex == eMaterialType::SirenLight)
+        {
+            int idx = GetSirenIndex(pCurVeh, material);
+            if (idx >= 0 && idx < MAX_LIGHTS)
+            {
+                lightOn = data.m_SirenStatus[idx];
+            }
+        }
+        else if (iLightIndex == eMaterialType::StrobeLight)
+        {
+            int idx = GetStrobeIndex(pCurVeh, material);
+            if (idx >= 0 && idx < MAX_LIGHTS)
+            {
+                lightOn = data.m_StrobeStatus[idx];
+            }
+        }
+        else if (iLightIndex != eMaterialType::UnknownMaterial)
+        {
+            lightOn = data.m_MatStatus[iLightIndex];
+        }
 
-		RpMaterialGetColor(material)->red = matCol.on.r;
-		RpMaterialGetColor(material)->green = matCol.on.g;
-		RpMaterialGetColor(material)->blue = matCol.on.b;
+        MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
 
-		if (lightOn)
-		{
-			(*ppEntries)->m_pAddress = &material->texture;
-			(*ppEntries)->m_pValue = material->texture;
-			(*ppEntries)++;
+        // 【修改点 1】：判断是否为前大灯
+        bool isHeadlight = (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight);
 
-			if (material->texture)
-			{
-				if (material->texture == CVehicleModelInfo::ms_pLightsTexture)
-				{
-					material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
-				}
-				else
-				{
-					RwTexture *pTex = TextureMgr::FindOnTextureInDict(material, material->texture->dict);
-					if (pTex)
-					{
-						material->texture = pTex;
-					}
-					else
-					{
-						LOG_VERBOSE("Expected an 'on' texture for {} but none found", material->texture->name);
-					}
-				}
-			}
-			material->surfaceProps.ambient = gLightSurfProps.ambient;
-		}
-		else
-		{
-			RpMaterialGetColor(material)->red = matCol.off.r;
-			RpMaterialGetColor(material)->green = matCol.off.g;
-			RpMaterialGetColor(material)->blue = matCol.off.b;
-			material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
-		}
-	}
-	else
-	{
-		CRGBA col = {255, 255, 255, 255};
-		if (Carcols::GetColor(pCurVeh, material, col))
-		{
-			(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
-			(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
-			(*ppEntries)++;
+        // 【修改点 2】：如果是前大灯，绝对不压栈篡改 RGB 颜色（保护 Proper Shaders 的材质识别）
+        if (!isHeadlight)
+        {
+            (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
+            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
+            (*ppEntries)++;
 
-			RpMaterialGetColor(material)->red = col.r;
-			RpMaterialGetColor(material)->green = col.g;
-			RpMaterialGetColor(material)->blue = col.b;
-		}
-	}
+            RpMaterialGetColor(material)->red = matCol.on.r;
+            RpMaterialGetColor(material)->green = matCol.on.g;
+            RpMaterialGetColor(material)->blue = matCol.on.b;
+        }
 
-	return material;
+        if (lightOn)
+        {
+            // 【关键保留】：允许切换贴图为 ms_pLightsOnTexture / _on 贴图！
+            // Proper Shaders 依靠识别 vehiclelighton128 贴图来激活全车灯罩延迟发光
+            (*ppEntries)->m_pAddress = &material->texture;
+            (*ppEntries)->m_pValue = material->texture;
+            (*ppEntries)++;
+
+            if (material->texture)
+            {
+                if (material->texture == CVehicleModelInfo::ms_pLightsTexture)
+                {
+                    material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
+                }
+                else
+                {
+                    RwTexture *pTex = TextureMgr::FindOnTextureInDict(material, material->texture->dict);
+                    if (pTex)
+                    {
+                        material->texture = pTex;
+                    }
+                    else
+                    {
+                        LOG_VERBOSE("Expected an 'on' texture for {} but none found", material->texture->name);
+                    }
+                }
+            }
+
+            // 【修改点 3】：如果是前大灯，禁止修改 Ambient 内存！
+            if (!isHeadlight)
+            {
+                material->surfaceProps.ambient = gLightSurfProps.ambient;
+            }
+        }
+        else
+        {
+            // 【修改点 4】：关灯状态下，如果是前大灯，同样禁止修改 RGB 和 Ambient
+            if (!isHeadlight)
+            {
+                RpMaterialGetColor(material)->red = matCol.off.r;
+                RpMaterialGetColor(material)->green = matCol.off.g;
+                RpMaterialGetColor(material)->blue = matCol.off.b;
+                material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
+            }
+        }
+    }
+    else
+    {
+        CRGBA col = {255, 255, 255, 255};
+        if (Carcols::GetColor(pCurVeh, material, col))
+        {
+            (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
+            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
+            (*ppEntries)++;
+
+            RpMaterialGetColor(material)->red = col.r;
+            RpMaterialGetColor(material)->green = col.g;
+            RpMaterialGetColor(material)->blue = col.b;
+        }
+    }
+
+    return material;
 }
 
 bool ModelInfoMgr::IsMaterialAvailable(CVehicle *pVeh, eMaterialType type)
