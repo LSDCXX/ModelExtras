@@ -278,11 +278,15 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 
         MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
 
-        // 【修改点 1】：判断是否为前大灯
-        bool isHeadlight = (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight);
+        // 【核心优化】：判断当前材质是否需要对 Proper Shaders 保持原生无污染
+        // 包含前大灯以及仪表盘背光/夜间灯等
+        bool isShadersProtectedMat = (iLightIndex == eMaterialType::HeadLightLeft || 
+                                      iLightIndex == eMaterialType::HeadLightRight ||
+                                      iLightIndex == eMaterialType::NightLight ||
+                                      iLightIndex == eMaterialType::DayLight);
 
-        // 【修改点 2】：如果是前大灯，绝对不压栈篡改 RGB 颜色（保护 Proper Shaders 的材质识别）
-        if (!isHeadlight)
+        // 仅对非受保护材质改色（普通灯光依然用 ME 改色）
+        if (!isShadersProtectedMat)
         {
             (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
             (*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
@@ -295,8 +299,7 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 
         if (lightOn)
         {
-            // 【关键保留】：允许切换贴图为 ms_pLightsOnTexture / _on 贴图！
-            // Proper Shaders 依靠识别 vehiclelighton128 贴图来激活全车灯罩延迟发光
+            // 彻底放开：所有被 ME 激活的材质（大灯、仪表盘、夜间灯等），一律压栈并替换 _on 贴图！
             (*ppEntries)->m_pAddress = &material->texture;
             (*ppEntries)->m_pValue = material->texture;
             (*ppEntries)++;
@@ -321,16 +324,15 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
                 }
             }
 
-            // 【修改点 3】：如果是前大灯，禁止修改 Ambient 内存！
-            if (!isHeadlight)
+            // 禁止改写 Shader 保护材质的 Ambient 参数，防止破坏 G-Buffer
+            if (!isShadersProtectedMat)
             {
                 material->surfaceProps.ambient = gLightSurfProps.ambient;
             }
         }
         else
         {
-            // 【修改点 4】：关灯状态下，如果是前大灯，同样禁止修改 RGB 和 Ambient
-            if (!isHeadlight)
+            if (!isShadersProtectedMat)
             {
                 RpMaterialGetColor(material)->red = matCol.off.r;
                 RpMaterialGetColor(material)->green = matCol.off.g;
