@@ -215,6 +215,8 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 	}
 
 	tRestoreEntry **ppEntries = reinterpret_cast<tRestoreEntry **>(data);
+
+	// 1. 处理车身涂装 (Remap)、污渍 (DirtFx) 与车牌 (LicensePlate) —— 保持 IVF 原生兼容
 	if (material->texture)
 	{
 		bool isRemapTex = RwTextureGetName(RpMaterialGetTexture(material))[0] == '#';
@@ -235,63 +237,88 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 		}
 	}
 
+	// 2. 解析当前材质的灯光类型
 	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
+	
 	if (iLightIndex != eMaterialType::UnknownMaterial)
 	{
 		auto &data = m_VehData.Get(pCurVeh);
-
 		bool lightOn = false;
 		data.m_MatAvail[iLightIndex] = true;
 
-		// Hide show night, day mats
+		// 日夜间材质控制 (DayLight / NightLight)
 		bool nightTime = Util::IsNightTime();
 		if (iLightIndex == eMaterialType::DayLight)
 		{
 			RpMaterialGetColor(material)->alpha = nightTime ? 0 : 255;
 		}
-
-		if (iLightIndex == eMaterialType::NightLight)
+		else if (iLightIndex == eMaterialType::NightLight)
 		{
 			RpMaterialGetColor(material)->alpha = nightTime ? 255 : 0;
 		}
-
-		if (iLightIndex == eMaterialType::SirenLight)
+		else if (iLightIndex == eMaterialType::SirenLight)
 		{
 			int idx = GetSirenIndex(pCurVeh, material);
-			if (idx >= 0 && idx < MAX_LIGHTS)
-			{
-				lightOn = data.m_SirenStatus[idx];
-			}
+			if (idx >= 0 && idx < MAX_LIGHTS) lightOn = data.m_SirenStatus[idx];
 		}
 		else if (iLightIndex == eMaterialType::StrobeLight)
 		{
 			int idx = GetStrobeIndex(pCurVeh, material);
-			if (idx >= 0 && idx < MAX_LIGHTS)
-			{
-				lightOn = data.m_StrobeStatus[idx];
-			}
+			if (idx >= 0 && idx < MAX_LIGHTS) lightOn = data.m_StrobeStatus[idx];
 		}
-		else if (iLightIndex != eMaterialType::UnknownMaterial)
+		else
 		{
 			lightOn = data.m_MatStatus[iLightIndex];
 		}
 
+		// =========================================================================
+		// 【IVF 式重构 1】：针对前大灯 (HeadLight) —— 仅做贴图句柄替换 (Texture Swap)
+		// 绝对不去改写 RpMaterialGetColor 和 ambient 内存，彻底防止 Proper Shaders 死黑！
+		// =========================================================================
+		if (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight)
+		{
+			if (lightOn)
+			{
+				(*ppEntries)->m_pAddress = &material->texture;
+				(*ppEntries)->m_pValue = material->texture;
+				(*ppEntries)++;
+
+				if (material->texture)
+				{
+					if (material->texture == CVehicleModelInfo::ms_pLightsTexture)
+					{
+						material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
+					}
+					else
+					{
+						RwTexture *pTex = TextureMgr::FindOnTextureInDict(material, material->texture->dict);
+						if (pTex)
+						{
+							material->texture = pTex;
+						}
+					}
+				}
+			}
+			// 替换完贴图（或关灯状态下）直接 exit！保护前灯 RW 材质属性完整
+			return material;
+		}
+
+		// =========================================================================
+		// 【IVF 式重构 2】：针对其他扩展灯具 (尾灯/转向灯/倒车灯等)
+		// 继续走 ModelExtras 的动态 RGB 与 Ambient 控制
+		// =========================================================================
 		MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
 
-		// 【关键保护 1】：非前灯才去压栈并修改 RGB 颜色，前灯绝对不去动 RpMaterialGetColor
-		if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
-		{
-			(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
-			(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
-			(*ppEntries)++;
-
-			RpMaterialGetColor(material)->red = matCol.on.r;
-			RpMaterialGetColor(material)->green = matCol.on.g;
-			RpMaterialGetColor(material)->blue = matCol.on.b;
-		}
+		(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
+		(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
+		(*ppEntries)++;
 
 		if (lightOn)
 		{
+			RpMaterialGetColor(material)->red = matCol.on.r;
+			RpMaterialGetColor(material)->green = matCol.on.g;
+			RpMaterialGetColor(material)->blue = matCol.on.b;
+
 			(*ppEntries)->m_pAddress = &material->texture;
 			(*ppEntries)->m_pValue = material->texture;
 			(*ppEntries)++;
@@ -316,26 +343,19 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 				}
 			}
 
-			// 【关键保护 2】：非前灯才去修改 ambient 属性
-			if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
-			{
-				material->surfaceProps.ambient = gLightSurfProps.ambient;
-			}
+			material->surfaceProps.ambient = gLightSurfProps.ambient;
 		}
 		else
 		{
-			// 【关键保护 3】：关灯状态下，前灯同样不去改写颜色和 ambient 属性
-			if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
-			{
-				RpMaterialGetColor(material)->red = matCol.off.r;
-				RpMaterialGetColor(material)->green = matCol.off.g;
-				RpMaterialGetColor(material)->blue = matCol.off.b;
-				material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
-			}
+			RpMaterialGetColor(material)->red = matCol.off.r;
+			RpMaterialGetColor(material)->green = matCol.off.g;
+			RpMaterialGetColor(material)->blue = matCol.off.b;
+			material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
 		}
 	}
 	else
 	{
+		// 3. 原生车身颜色 (Carcols) 机制 —— 确保车辆绝不变绿
 		CRGBA col = {255, 255, 255, 255};
 		if (Carcols::GetColor(pCurVeh, material, col))
 		{
