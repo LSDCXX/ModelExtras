@@ -243,80 +243,50 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 		bool lightOn = false;
 		data.m_MatAvail[iLightIndex] = true;
 
-		// 日夜间材质处理
+		// Hide show night, day mats
 		bool nightTime = Util::IsNightTime();
 		if (iLightIndex == eMaterialType::DayLight)
 		{
 			RpMaterialGetColor(material)->alpha = nightTime ? 0 : 255;
 		}
-		else if (iLightIndex == eMaterialType::NightLight)
+
+		if (iLightIndex == eMaterialType::NightLight)
 		{
 			RpMaterialGetColor(material)->alpha = nightTime ? 255 : 0;
 		}
-		else if (iLightIndex == eMaterialType::SirenLight)
+
+		if (iLightIndex == eMaterialType::SirenLight)
 		{
 			int idx = GetSirenIndex(pCurVeh, material);
-			if (idx >= 0 && idx < MAX_LIGHTS) lightOn = data.m_SirenStatus[idx];
+			if (idx >= 0 && idx < MAX_LIGHTS)
+			{
+				lightOn = data.m_SirenStatus[idx];
+			}
 		}
 		else if (iLightIndex == eMaterialType::StrobeLight)
 		{
 			int idx = GetStrobeIndex(pCurVeh, material);
-			if (idx >= 0 && idx < MAX_LIGHTS) lightOn = data.m_StrobeStatus[idx];
+			if (idx >= 0 && idx < MAX_LIGHTS)
+			{
+				lightOn = data.m_StrobeStatus[idx];
+			}
 		}
 		else if (iLightIndex != eMaterialType::UnknownMaterial)
 		{
 			lightOn = data.m_MatStatus[iLightIndex];
 		}
 
-		// =========================================================================
-		// 【摒弃 RW 材质逻辑 - 前大灯（Headlight）重构分支】
-		// 彻底剔除 RpMaterialGetColor RGB 改写、剔除 ambient 改写、剔除颜色 ppEntries 压栈！
-		// 只做纯粹的 RW 贴图指针指向切换（Texture Swapping）。
-		// =========================================================================
-		if (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight)
-		{
-			if (lightOn)
-			{
-				(*ppEntries)->m_pAddress = &material->texture;
-				(*ppEntries)->m_pValue = material->texture;
-				(*ppEntries)++;
-
-				if (material->texture)
-				{
-					if (material->texture == CVehicleModelInfo::ms_pLightsTexture)
-					{
-						material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
-					}
-					else
-					{
-						RwTexture *pTex = TextureMgr::FindOnTextureInDict(material, material->texture->dict);
-						if (pTex)
-						{
-							material->texture = pTex;
-						}
-					}
-				}
-			}
-			// 贴图指针处理完毕后直接退出，让前灯 RW 材质属性 100% 保持纯净原生！
-			return material;
-		}
-
-		// =========================================================================
-		// 【传统 RW 材质逻辑 - 扩展灯具分支（尾灯/转向灯/倒车灯等）】
-		// 继续保留 ModelExtras 原有的多色与 RGB 改写
-		// =========================================================================
 		MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
-
 		(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
 		(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
 		(*ppEntries)++;
 
+		RpMaterialGetColor(material)->red = matCol.on.r;
+		RpMaterialGetColor(material)->green = matCol.on.g;
+		RpMaterialGetColor(material)->blue = matCol.on.b;
+
 		if (lightOn)
 		{
-			RpMaterialGetColor(material)->red = matCol.on.r;
-			RpMaterialGetColor(material)->green = matCol.on.g;
-			RpMaterialGetColor(material)->blue = matCol.on.b;
-
 			(*ppEntries)->m_pAddress = &material->texture;
 			(*ppEntries)->m_pValue = material->texture;
 			(*ppEntries)++;
@@ -334,9 +304,12 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 					{
 						material->texture = pTex;
 					}
+					else
+					{
+						LOG_VERBOSE("Expected an 'on' texture for {} but none found", material->texture->name);
+					}
 				}
 			}
-
 			material->surfaceProps.ambient = gLightSurfProps.ambient;
 		}
 		else
@@ -349,7 +322,6 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 	}
 	else
 	{
-		// 车身调色板 (Carcols) 机制保持不变
 		CRGBA col = {255, 255, 255, 255};
 		if (Carcols::GetColor(pCurVeh, material, col))
 		{
