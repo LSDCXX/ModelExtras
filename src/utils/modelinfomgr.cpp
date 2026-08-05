@@ -275,71 +275,74 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
             lightOn = data.m_MatStatus[iLightIndex];
         }
 
-        bool isHeadlight = (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight);
+        MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
 
-        // 仅对非前大灯改写 RGB 颜色（前大灯绝不能改写颜色，否则 Proper Shaders 会模糊崩溃）
-        if (!isHeadlight)
+        if (lightOn)
         {
-            MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
+            // ==========================================
+            // 🎯【1. 照搬 IVF：材质 RGB 颜色与 Ambient 修改】
+            // ==========================================
             (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
             (*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
             (*ppEntries)++;
 
+            // 照搬 IVF：RGB 赋开灯色，并将 Ambient 强行拉满到 10.0f
             RpMaterialGetColor(material)->red = matCol.on.r;
             RpMaterialGetColor(material)->green = matCol.on.g;
             RpMaterialGetColor(material)->blue = matCol.on.b;
-        }
 
-        if (lightOn)
-        {
-            // 压栈保护材质贴图
+            (*ppEntries)->m_pAddress = &material->surfaceProps.ambient;
+            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(&material->surfaceProps.ambient);
+            (*ppEntries)++;
+            material->surfaceProps.ambient = 10.0f; // 对应 IVF 汇编里的 0x41800000 (10.0f)
+
+            // ==========================================
+            // 🎯【2. 照搬 IVF：贴图查找与替换机制】
+            // ==========================================
             (*ppEntries)->m_pAddress = &material->texture;
             (*ppEntries)->m_pValue = material->texture;
             (*ppEntries)++;
 
             if (material->texture)
             {
+                // IVF 优先查找 vehiclelights_on，若没有则找 vehiclelighton128
                 if (material->texture == CVehicleModelInfo::ms_pLightsTexture)
                 {
-                    material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
+                    RwTexture *pIvfOnTex = RwTexDictionaryFindNamedTexture(material->texture->dict, "vehiclelights_on");
+                    if (pIvfOnTex)
+                    {
+                        material->texture = pIvfOnTex;
+                    }
+                    else
+                    {
+                        material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
+                    }
                 }
                 else
                 {
+                    // 照搬 IVF 动态拼接 _on 后缀查找
                     RwTexture *pTex = TextureMgr::FindOnTextureInDict(material, material->texture->dict);
                     if (pTex)
                     {
                         material->texture = pTex;
                     }
-                    else if (isHeadlight)
-                    {
-                        material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
-                    }
                 }
             }
-
-            // 🎯【核心突破点】：无论什么材质，只要开灯，强行把 Ambient 压栈并拉满到 10.0f！
-            // 这样就算 Shader 不发光，RenderWare 引擎自己也会把这张贴图以极高亮度渲染出来！
-            (*ppEntries)->m_pAddress = &material->surfaceProps.ambient;
-            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(&material->surfaceProps.ambient);
-            (*ppEntries)++;
-
-            material->surfaceProps.ambient = 10.0f; // 强制环境光高亮
         }
         else
         {
-            if (!isHeadlight)
-            {
-                MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
-                RpMaterialGetColor(material)->red = matCol.off.r;
-                RpMaterialGetColor(material)->green = matCol.off.g;
-                RpMaterialGetColor(material)->blue = matCol.off.b;
-            }
+            // 关灯状态：恢复常规 RGB 与关灯 Ambient
+            (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
+            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
+            (*ppEntries)++;
 
-            // 关灯状态下，恢复常规 Ambient
+            RpMaterialGetColor(material)->red = matCol.off.r;
+            RpMaterialGetColor(material)->green = matCol.off.g;
+            RpMaterialGetColor(material)->blue = matCol.off.b;
+
             (*ppEntries)->m_pAddress = &material->surfaceProps.ambient;
             (*ppEntries)->m_pValue = *reinterpret_cast<void **>(&material->surfaceProps.ambient);
             (*ppEntries)++;
-
             material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
         }
     }
