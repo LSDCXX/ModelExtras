@@ -213,7 +213,12 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 	{
 		return material;
 	}
-
+	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
+	// 【修改 2】：遇到前大灯材质，直接 return！
+	if (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight)
+	{
+		return material;
+	}
 	tRestoreEntry **ppEntries = reinterpret_cast<tRestoreEntry **>(data);
 	if (material->texture)
 	{
@@ -235,7 +240,6 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 		}
 	}
 
-	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
 	if (iLightIndex != eMaterialType::UnknownMaterial)
 	{
 		auto &data = m_VehData.Get(pCurVeh);
