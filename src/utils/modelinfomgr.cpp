@@ -213,14 +213,7 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 	{
 		return material;
 	}
-	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
 
-    if (iLightIndex == eMaterialType::UnknownMaterial || 
-        iLightIndex == eMaterialType::HeadLightLeft || 
-        iLightIndex == eMaterialType::HeadLightRight)
-    {
-        return material;
-    }
 	tRestoreEntry **ppEntries = reinterpret_cast<tRestoreEntry **>(data);
 	if (material->texture)
 	{
@@ -241,6 +234,8 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 			LicensePlate::ProcessTextures(pCurVeh, material);
 		}
 	}
+
+	eMaterialType iLightIndex = FetchMaterialType(pCurVeh, material);
 	if (iLightIndex != eMaterialType::UnknownMaterial)
 	{
 		auto &data = m_VehData.Get(pCurVeh);
@@ -282,13 +277,18 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 		}
 
 		MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
-		(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
-		(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
-		(*ppEntries)++;
 
-		RpMaterialGetColor(material)->red = matCol.on.r;
-		RpMaterialGetColor(material)->green = matCol.on.g;
-		RpMaterialGetColor(material)->blue = matCol.on.b;
+		// 【关键保护 1】：非前灯才去压栈并修改 RGB 颜色，前灯绝对不去动 RpMaterialGetColor
+		if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
+		{
+			(*ppEntries)->m_pAddress = RpMaterialGetColor(material);
+			(*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
+			(*ppEntries)++;
+
+			RpMaterialGetColor(material)->red = matCol.on.r;
+			RpMaterialGetColor(material)->green = matCol.on.g;
+			RpMaterialGetColor(material)->blue = matCol.on.b;
+		}
 
 		if (lightOn)
 		{
@@ -315,14 +315,23 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 					}
 				}
 			}
-			material->surfaceProps.ambient = gLightSurfProps.ambient;
+
+			// 【关键保护 2】：非前灯才去修改 ambient 属性
+			if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
+			{
+				material->surfaceProps.ambient = gLightSurfProps.ambient;
+			}
 		}
 		else
 		{
-			RpMaterialGetColor(material)->red = matCol.off.r;
-			RpMaterialGetColor(material)->green = matCol.off.g;
-			RpMaterialGetColor(material)->blue = matCol.off.b;
-			material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
+			// 【关键保护 3】：关灯状态下，前灯同样不去改写颜色和 ambient 属性
+			if (iLightIndex != eMaterialType::HeadLightLeft && iLightIndex != eMaterialType::HeadLightRight)
+			{
+				RpMaterialGetColor(material)->red = matCol.off.r;
+				RpMaterialGetColor(material)->green = matCol.off.g;
+				RpMaterialGetColor(material)->blue = matCol.off.b;
+				material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
+			}
 		}
 	}
 	else
