@@ -243,7 +243,6 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
         bool lightOn = false;
         data.m_MatAvail[iLightIndex] = true;
 
-        // Hide show night, day mats
         bool nightTime = Util::IsNightTime();
         if (iLightIndex == eMaterialType::DayLight)
         {
@@ -276,18 +275,13 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
             lightOn = data.m_MatStatus[iLightIndex];
         }
 
-        MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
+        // 判断是否为前大灯材质
+        bool isHeadlight = (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight);
 
-        // 【核心优化】：判断当前材质是否需要对 Proper Shaders 保持原生无污染
-        // 包含前大灯以及仪表盘背光/夜间灯等
-        bool isShadersProtectedMat = (iLightIndex == eMaterialType::HeadLightLeft || 
-                                      iLightIndex == eMaterialType::HeadLightRight ||
-                                      iLightIndex == eMaterialType::NightLight ||
-                                      iLightIndex == eMaterialType::DayLight);
-
-        // 仅对非受保护材质改色（普通灯光依然用 ME 改色）
-        if (!isShadersProtectedMat)
+        // 仅对非前大灯修改 RGB（防止破坏 G-Buffer 导致模糊黑晕）
+        if (!isHeadlight)
         {
+            MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
             (*ppEntries)->m_pAddress = RpMaterialGetColor(material);
             (*ppEntries)->m_pValue = *reinterpret_cast<void **>(RpMaterialGetColor(material));
             (*ppEntries)++;
@@ -299,7 +293,8 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 
         if (lightOn)
         {
-            // 彻底放开：所有被 ME 激活的材质（大灯、仪表盘、夜间灯等），一律压栈并替换 _on 贴图！
+            // 🎯【最关键的一步】：压栈并强制切换贴图为 vehiclelighton128！
+            // 只要切换到了 vehiclelighton128，Proper Shaders 就会立刻激活自发光着色器！
             (*ppEntries)->m_pAddress = &material->texture;
             (*ppEntries)->m_pValue = material->texture;
             (*ppEntries)++;
@@ -317,23 +312,25 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
                     {
                         material->texture = pTex;
                     }
-                    else
+                    else if (isHeadlight)
                     {
-                        LOG_VERBOSE("Expected an 'on' texture for {} but none found", material->texture->name);
+                        // 如果在 TXD 字典里没找到自定义 _on 贴图，前大灯强制退回全局 vehiclelighton128
+                        material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
                     }
                 }
             }
 
-            // 禁止改写 Shader 保护材质的 Ambient 参数，防止破坏 G-Buffer
-            if (!isShadersProtectedMat)
+            // 仅对非前大灯改 Ambient
+            if (!isHeadlight)
             {
                 material->surfaceProps.ambient = gLightSurfProps.ambient;
             }
         }
         else
         {
-            if (!isShadersProtectedMat)
+            if (!isHeadlight)
             {
+                MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
                 RpMaterialGetColor(material)->red = matCol.off.r;
                 RpMaterialGetColor(material)->green = matCol.off.g;
                 RpMaterialGetColor(material)->blue = matCol.off.b;
