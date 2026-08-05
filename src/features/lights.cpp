@@ -61,9 +61,9 @@ void Lights::Init()
 	patch::Nop(0x6E2722, 19);	  // CVehicle::DoHeadLightReflection
 	patch::SetUChar(0x6E1A22, 0); // CVehicle::DoTailLightEffect
 
-	// // // CVehicle::DoHeadLightEffect
-	// patch::SetUChar(0x6E0CF8, 0);
-	// patch::SetUChar(0x6E0DEE, 0);
+	// // CVehicle::DoHeadLightEffect
+	patch::SetUChar(0x6E0CF8, 0);
+	patch::SetUChar(0x6E0DEE, 0);
 
 	// NOP CVehicle::DoHeadLightBeam
 	if (!gConfig.ReadBoolean("TWEAKS", "HeadLightBeams", true))
@@ -95,9 +95,10 @@ void Lights::Init()
 		// Headlights
 		CRGBA matCol = *reinterpret_cast<CRGBA *>(RpMaterialGetColor(pMat));
 		matCol.a = 255;
-		if (matCol == VEHCOL_HEADLIGHT_LEFT || matCol == VEHCOL_HEADLIGHT_RIGHT)
-		{
-   			return eMaterialType::UnknownMaterial;
+		if (matCol == VEHCOL_HEADLIGHT_LEFT) {
+			return eMaterialType::HeadLightLeft;
+		} else if (matCol == VEHCOL_HEADLIGHT_RIGHT) {
+			return eMaterialType::HeadLightRight;
 		}
 		// Taillights
 		else if (matCol == VEHCOL_TAILLIGHT_LEFT) {
@@ -736,7 +737,6 @@ void Lights::RenderLights(CVehicle *pControlVeh, CVehicle *pTowedVeh, eMaterialT
 
 void Lights::RenderHeadlights(CVehicle *pControlVeh, bool isLeftOn, bool isRightOn, bool realTime)
 {
-	return;
 	CVehicle *pTowedVeh = pControlVeh;
 	VehLightDatav1 &data = m_VehData.Get(pControlVeh);
 
