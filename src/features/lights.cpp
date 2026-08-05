@@ -95,11 +95,10 @@ void Lights::Init()
 		// Headlights
 		CRGBA matCol = *reinterpret_cast<CRGBA *>(RpMaterialGetColor(pMat));
 		matCol.a = 255;
-		if (matCol == VEHCOL_HEADLIGHT_LEFT) {
-			return eMaterialType::HeadLightLeft;
-		} else if (matCol == VEHCOL_HEADLIGHT_RIGHT) {
-			return eMaterialType::HeadLightRight;
-		}
+		if (matCol == VEHCOL_HEADLIGHT_LEFT || matCol == VEHCOL_HEADLIGHT_RIGHT)
+			{
+				return eMaterialType::UnknownMaterial;
+			}
 		// Taillights
 		else if (matCol == VEHCOL_TAILLIGHT_LEFT) {
 			return eMaterialType::TailLightLeft;
