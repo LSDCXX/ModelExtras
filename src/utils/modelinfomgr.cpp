@@ -275,10 +275,9 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
             lightOn = data.m_MatStatus[iLightIndex];
         }
 
-        // 判断是否为前大灯材质
         bool isHeadlight = (iLightIndex == eMaterialType::HeadLightLeft || iLightIndex == eMaterialType::HeadLightRight);
 
-        // 仅对非前大灯修改 RGB（防止破坏 G-Buffer 导致模糊黑晕）
+        // 仅对非前大灯改写 RGB 颜色（前大灯绝不能改写颜色，否则 Proper Shaders 会模糊崩溃）
         if (!isHeadlight)
         {
             MatStateColor matCol = FetchMaterialCol(pCurVeh, material, iLightIndex);
@@ -293,8 +292,7 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
 
         if (lightOn)
         {
-            // 🎯【最关键的一步】：压栈并强制切换贴图为 vehiclelighton128！
-            // 只要切换到了 vehiclelighton128，Proper Shaders 就会立刻激活自发光着色器！
+            // 压栈保护材质贴图
             (*ppEntries)->m_pAddress = &material->texture;
             (*ppEntries)->m_pValue = material->texture;
             (*ppEntries)++;
@@ -314,17 +312,18 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
                     }
                     else if (isHeadlight)
                     {
-                        // 如果在 TXD 字典里没找到自定义 _on 贴图，前大灯强制退回全局 vehiclelighton128
                         material->texture = CVehicleModelInfo::ms_pLightsOnTexture;
                     }
                 }
             }
 
-            // 仅对非前大灯改 Ambient
-            if (!isHeadlight)
-            {
-                material->surfaceProps.ambient = gLightSurfProps.ambient;
-            }
+            // 🎯【核心突破点】：无论什么材质，只要开灯，强行把 Ambient 压栈并拉满到 10.0f！
+            // 这样就算 Shader 不发光，RenderWare 引擎自己也会把这张贴图以极高亮度渲染出来！
+            (*ppEntries)->m_pAddress = &material->surfaceProps.ambient;
+            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(&material->surfaceProps.ambient);
+            (*ppEntries)++;
+
+            material->surfaceProps.ambient = 10.0f; // 强制环境光高亮
         }
         else
         {
@@ -334,8 +333,14 @@ RpMaterial *ModelInfoMgr::SetEditableMaterialsCB(RpMaterial *material, void *dat
                 RpMaterialGetColor(material)->red = matCol.off.r;
                 RpMaterialGetColor(material)->green = matCol.off.g;
                 RpMaterialGetColor(material)->blue = matCol.off.b;
-                material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
             }
+
+            // 关灯状态下，恢复常规 Ambient
+            (*ppEntries)->m_pAddress = &material->surfaceProps.ambient;
+            (*ppEntries)->m_pValue = *reinterpret_cast<void **>(&material->surfaceProps.ambient);
+            (*ppEntries)++;
+
+            material->surfaceProps.ambient = gLightSurfPropsOff.ambient;
         }
     }
     else
