@@ -3,12 +3,11 @@
 #include "utils/util.h"
 #include "utils/car.h"
 #include "utils/audiomgr.h"
-#include "utils/modelinfomgr.h"
 #include <CWeather.h>
 
-// 【IVF 式重构 1】：直接返回 UnknownMaterial！
-// 彻底掐断 ModelExtras 在 modelinfomgr.cpp 里对前大灯 RpMaterialGetColor / Ambient 压栈的修改！
 eMaterialType HeadlightComponent::GetMatType(CRGBA matCol) {
+    if (matCol == VEHCOL_HEADLIGHT_LEFT) return eMaterialType::HeadLightLeft;
+    if (matCol == VEHCOL_HEADLIGHT_RIGHT) return eMaterialType::HeadLightRight;
     return eMaterialType::UnknownMaterial;
 }
 
@@ -48,7 +47,8 @@ void HeadlightComponent::Process(CVehicle* pVeh, VehLightData& data) {
         if (DistanceBetweenPoints(pVeh->GetPosition(), TheCamera.GetPosition()) < 150.0f || pVeh->GetIsOnScreen()) {
             bool isLeftFrontOk = !Util::IsLightDamaged(pVeh, eLights::LIGHT_FRONT_LEFT);
             bool isRightFrontOk = !Util::IsLightDamaged(pVeh, eLights::LIGHT_FRONT_RIGHT);
-            
+            // Render Headlights directly from Process logic for AI/Parked if visible to camera.
+            // This replicates the old ProcessScriptsEvent headlight render for non-player vehicles.
             if (pVeh->bLightsOn || CarUtil::IsLightsForcedOn(pVeh) || Util::IsNightTime()) {
                 std::string texName = data.bLongLightsOn ? "headlight_long" : "headlight_short";
                 LightManager::RenderLight(pVeh, data, eMaterialType::HeadLightLeft, isLeftFrontOk, texName);
@@ -58,7 +58,6 @@ void HeadlightComponent::Process(CVehicle* pVeh, VehLightData& data) {
     }
 }
 
-// 【IVF 式重构 2】：大灯渲染纯净化，只触发 Dummy 光晕与投影，绝不操控 RW 材质结构！
 void HeadlightComponent::Render(CVehicle* pControlVeh, CVehicle* pTowedVeh, VehLightData& data) {
     if (CarUtil::IsLightsForcedOff(pControlVeh)) return;
 
@@ -77,3 +76,4 @@ void HeadlightComponent::Render(CVehicle* pControlVeh, CVehicle* pTowedVeh, VehL
         }
     }
 }
+
